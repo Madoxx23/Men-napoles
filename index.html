@@ -2871,7 +2871,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     <div class="combine-header-top">
       <div>
         <div class="combine-title">Pizza Mitad y Mitad</div>
-        <div class="combine-subtitle">40 cm · Combina dos sabores</div>
+        <div class="combine-subtitle" id="combineSubtitle">40 cm · Combina dos sabores</div>
       </div>
       <button class="combine-close" id="combineClose" aria-label="Cerrar">&times;</button>
     </div>
@@ -2891,7 +2891,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   <div class="combine-list" id="combineList"></div>
   <div class="combine-footer hidden" id="combineFooter">
     <div class="combine-price-row">
-      <span class="combine-price-label">Precio (40 cm)</span>
+      <span class="combine-price-label" id="combinePriceLabel">Precio (40 cm)</span>
       <span class="combine-price-value" id="combinePrice">$0</span>
     </div>
     <button type="button" class="combine-add-btn disabled" id="combineAddBtn">
@@ -2906,12 +2906,26 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 (function() {
   'use strict';
 
-  // Catálogo de pizzas elegibles (precio = 40 cm)
-  const CATALOG = [
+  // Catálogo de pizzas elegibles - precio para 40 cm
+  const CATALOG_40 = [
     { cat: 'Pizza Clasica',  price: 52900, items: ['Pepperoni','Hawaiana','Pollo y Champinones','Margarita','Pollo Tocineta','Jamon y Queso','Vegetariana'] },
     { cat: 'Pizza Premium',  price: 57900, items: ['Colombiana','Campesina','Ranchera','Mexicana','Espanola','4 Quesos','Marinera','Venecia'] },
     { cat: 'Pizza Master',   price: 59900, items: ['Patrona','Promesa Italiana',"Napole's",'Turin','Caprichosa'] }
   ];
+
+  // Catálogo de pizzas elegibles - precio para 30 cm (mismos ítems, otro precio)
+  const CATALOG_30 = [
+    { cat: 'Pizza Clasica',  price: 29900, items: ['Pepperoni','Hawaiana','Pollo y Champinones','Margarita','Pollo Tocineta','Jamon y Queso','Vegetariana'] },
+    { cat: 'Pizza Premium',  price: 34900, items: ['Colombiana','Campesina','Ranchera','Mexicana','Espanola','4 Quesos','Marinera','Venecia'] },
+    { cat: 'Pizza Master',   price: 35900, items: ['Patrona','Promesa Italiana',"Napole's",'Turin','Caprichosa'] }
+  ];
+
+  // Mantener compatibilidad: CATALOG apunta al catálogo de 40 cm (comportamiento original)
+  const CATALOG = CATALOG_40;
+
+  function getCatalog(size) {
+    return size === 30 ? CATALOG_30 : CATALOG_40;
+  }
 
   // Mapping de nombres normalizados (sin tildes) -> nombre con tildes (usado en HTML)
   // Esto permite buscar el nombre real de la pizza desde su nombre limpio
@@ -2928,9 +2942,9 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
-  function findInCatalog(displayName) {
+  function findInCatalog(displayName, size) {
     const norm = normalizeName(displayName);
-    for (const cat of CATALOG) {
+    for (const cat of getCatalog(size)) {
       for (const item of cat.items) {
         if (normalizeName(item) === norm) {
           return { cat: cat.cat, price: cat.price, item };
@@ -2945,51 +2959,67 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   // Estado
   const halves = { A: null, B: null };
   let currentSlot = null; // 'A' o 'B' - cuál estamos llenando
+  let currentSize = 40;   // 30 o 40 - tamaño de la pizza que se está combinando
 
-  // ============== Inyectar botones "Combinar sabores" en cards de 40 cm ==============
+  // ============== Inyectar botones "Combinar sabores" en cards de 30 cm y 40 cm ==============
   function injectCombineButtons() {
     document.querySelectorAll('.card').forEach(card => {
       const nameEl = card.querySelector('.card-name');
       if (!nameEl) return;
       const name = nameEl.textContent.trim();
 
-      // Verificar que la pizza esté en el catálogo (Clasica/Premium/Master)
-      const info = findInCatalog(name);
-      if (!info) return;
-
-      // Verificar que tenga precio de 40 cm
-      const has40cm = Array.from(card.querySelectorAll('.card-price .ps')).some(
-        el => /40/.test(el.textContent)
-      );
-      if (!has40cm) return;
-
-      // Evitar duplicar
-      if (card.querySelector('.combine-btn')) return;
-
-      // Crear botón
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'combine-btn';
-      btn.dataset.pizza = name;
-      btn.dataset.cat = info.cat;
-      btn.dataset.price = info.price;
-      btn.innerHTML = 'Combinar 2 sabores (40 cm)';
-
-      // Insertar después de .card-prices
       const cardBody = card.querySelector('.card-body');
-      if (cardBody) {
-        cardBody.appendChild(btn);
+      if (!cardBody) return;
+
+      const priceLabels = Array.from(card.querySelectorAll('.card-price .ps')).map(el => el.textContent);
+      const has40cm = priceLabels.some(t => /40/.test(t));
+      const has30cm = priceLabels.some(t => /30/.test(t));
+
+      // Botón 40 cm (comportamiento original)
+      if (has40cm && findInCatalog(name, 40) && !card.querySelector('.combine-btn[data-size="40"]')) {
+        const info40 = findInCatalog(name, 40);
+        const btn40 = document.createElement('button');
+        btn40.type = 'button';
+        btn40.className = 'combine-btn';
+        btn40.dataset.pizza = name;
+        btn40.dataset.cat = info40.cat;
+        btn40.dataset.price = info40.price;
+        btn40.dataset.size = '40';
+        btn40.innerHTML = 'Combinar 2 sabores (40 cm)';
+        cardBody.appendChild(btn40);
+        btn40.addEventListener('click', () => openCombineModal(name, 40));
       }
 
-      btn.addEventListener('click', () => openCombineModal(name));
+      // Botón 30 cm (todas las pizzas de 30 cm también se pueden combinar)
+      if (has30cm && findInCatalog(name, 30) && !card.querySelector('.combine-btn[data-size="30"]')) {
+        const info30 = findInCatalog(name, 30);
+        const btn30 = document.createElement('button');
+        btn30.type = 'button';
+        btn30.className = 'combine-btn';
+        btn30.dataset.pizza = name;
+        btn30.dataset.cat = info30.cat;
+        btn30.dataset.price = info30.price;
+        btn30.dataset.size = '30';
+        btn30.innerHTML = 'Combinar 2 sabores (30 cm)';
+        cardBody.appendChild(btn30);
+        btn30.addEventListener('click', () => openCombineModal(name, 30));
+      }
     });
   }
 
   // ============== Modal ==============
-  function openCombineModal(prefilledName) {
+  function openCombineModal(prefilledName, size) {
+    currentSize = size === 30 ? 30 : 40;
+
+    // Actualizar textos del modal según el tamaño
+    const subtitleEl = document.getElementById('combineSubtitle');
+    if (subtitleEl) subtitleEl.textContent = currentSize + ' cm · Combina dos sabores';
+    const priceLabelEl = document.getElementById('combinePriceLabel');
+    if (priceLabelEl) priceLabelEl.textContent = 'Precio (' + currentSize + ' cm)';
+
     // Pre-fill mitad A con la pizza desde la que se hizo clic
     if (prefilledName) {
-      const info = findInCatalog(prefilledName);
+      const info = findInCatalog(prefilledName, currentSize);
       if (info) {
         halves.A = { name: prefilledName, cat: info.cat, price: info.price };
       }
@@ -3045,7 +3075,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     const listEl = document.getElementById('combineList');
     let html = '';
 
-    CATALOG.forEach(cat => {
+    getCatalog(currentSize).forEach(cat => {
       html += '<div class="combine-cat-header">' +
               '<span>' + cat.cat + '</span>' +
               '<span class="combine-cat-price">' + fmtPrice(cat.price) + '</span>' +
@@ -3107,7 +3137,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   function addComboToCart() {
     if (!halves.A || !halves.B) return;
     const finalPrice = Math.max(halves.A.price, halves.B.price);
-    const itemName = 'Pizza 40CM Mitad ' + halves.A.name + ' / Mitad ' + halves.B.name;
+    const itemName = 'Pizza ' + currentSize + 'CM Mitad ' + halves.A.name + ' / Mitad ' + halves.B.name;
 
     // Disparar evento que el carrito principal escucha
     window.dispatchEvent(new CustomEvent('addCustomToCart', {
